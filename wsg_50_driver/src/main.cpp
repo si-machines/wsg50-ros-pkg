@@ -522,11 +522,12 @@ int main( int argc, char **argv )
    ros::NodeHandle nh("~");
    signal(SIGINT, sigint_handler);
 
-   std::string ip, protocol, com_mode;
+   std::string ip, protocol, com_mode, js_prefix;
    int port, local_port;
    double rate, grasping_force;
    bool use_udp = false;
 
+   nh.param("js_prefix", js_prefix , std::string("wsg"));
    nh.param("ip", ip, std::string("192.168.1.20"));
    nh.param("port", port, 1000);
    nh.param("local_port", local_port, 1501);
@@ -585,7 +586,7 @@ int main( int argc, char **argv )
 
 		// Publisher
 		g_pub_state = nh.advertise<wsg_50_common::Status>("status", 1000);
-		g_pub_joint = nh.advertise<sensor_msgs::JointState>("/joint_states", 10);
+		g_pub_joint = nh.advertise<sensor_msgs::JointState>(js_prefix + "/joint_states", 10);
         if (g_mode_script || g_mode_periodic)
             g_pub_moving = nh.advertise<std_msgs::Bool>("moving", 10);
 
