@@ -85,7 +85,7 @@ bool objectGraspped;
 
 int g_timer_cnt = 0;
 ros::Publisher g_pub_state, g_pub_joint, g_pub_moving;
-bool g_ismoving = false, g_mode_script = false, g_mode_periodic = false, g_mode_polling = false;
+bool g_ismoving = false, g_mode_script = false, g_mode_periodic = false, g_mode_polling = false, msg_alloc = false;
 float g_goal_position = NAN, g_goal_speed = NAN, g_speed = 10.0;
    
 //------------------------------------------------------------------------
@@ -378,11 +378,14 @@ void read_thread(int interval_ms)
 
     while (g_mode_periodic) {
         // Receive gripper response
-        msg_free(&msg);
+	if(msg_alloc)
+		msg_free(&msg);
         res = msg_receive( &msg );
+	msg_alloc = true;
         if (res < 0 || msg.len < 2) {
             ROS_ERROR("Gripper response failure: too short");
-            continue;
+            msg_alloc = false;
+	    continue;
         }
 
         float val = 0.0;
