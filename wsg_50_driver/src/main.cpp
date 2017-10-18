@@ -62,6 +62,8 @@
 #include "sensor_msgs/JointState.h"
 #include "std_msgs/Float32.h"
 #include "std_msgs/Bool.h"
+#include "diagnostic_msgs/DiagnosticStatus.h"
+#include "diagnostic_msgs/DiagnosticArray.h"
 
 
 //------------------------------------------------------------------------
@@ -84,10 +86,12 @@ float increment;
 bool objectGraspped;
 
 int g_timer_cnt = 0;
-ros::Publisher g_pub_state, g_pub_joint, g_pub_moving;
+ros::Publisher g_pub_state, g_pub_joint, g_pub_moving, diag_pub;
 bool g_ismoving = false, g_mode_script = false, g_mode_periodic = false, g_mode_polling = false, msg_alloc = false;
 float g_goal_position = NAN, g_goal_speed = NAN, g_speed = 10.0;
-   
+ 
+diagnostic_msgs::DiagnosticStatus diagStatus;
+  
 //------------------------------------------------------------------------
 // Unit testing
 //------------------------------------------------------------------------
@@ -427,9 +431,11 @@ void read_thread(int interval_ms)
         case 0x21:
             if (status == E_SUCCESS) {
                 ROS_INFO("Position reached");
+    		diagStatus.level = diagStatus.OK;
                 motion = 0;
             } else if (status == E_AXIS_BLOCKED) {
                 ROS_INFO("Axis blocked");
+    		diagStatus.level = diagStatus.ERROR;
                 motion = 0;
             } else if (status == E_CMD_PENDING) {
                 ROS_INFO("Movement started");
@@ -438,9 +444,11 @@ void read_thread(int interval_ms)
                 ROS_INFO("Movement error: already running");
             } else if (status == E_CMD_ABORTED) {
                 ROS_INFO("Movement aborted");
+    		diagStatus.level = diagStatus.ERROR;
                 motion = 0;
             } else {
                 ROS_INFO("Movement error");
+    		diagStatus.level = diagStatus.ERROR;
                 motion = 0;
             }
             break;
@@ -475,7 +483,8 @@ void read_thread(int interval_ms)
             joint_states.effort[0] = status_msg.force;
             joint_states.effort[1] = status_msg.force;
             g_pub_joint.publish(joint_states);
-        }
+	    diagStatus.message = "Streaming";
+	}
 
         // Check # of received messages regularly
         std::chrono::duration<float> t = std::chrono::system_clock::now() - time_start;
@@ -495,7 +504,11 @@ void read_thread(int interval_ms)
             cnt[0] = 0; cnt[1] = 0; cnt[2] = 0;
         }
 
-
+	diagnostic_msgs::DiagnosticArray diagStatusAr;
+	diagStatusAr.header.stamp = ros::Time::now();
+    	diagStatus.level = diagStatus.OK;
+	diagStatusAr.status.push_back(diagStatus);
+	diag_pub.publish(diagStatusAr);
     }
 
     // Disable automatic updates
@@ -503,6 +516,14 @@ void read_thread(int interval_ms)
     getOpening(0);
     getSpeed(0);
     getForce(0);
+
+    diagnostic_msgs::DiagnosticArray diagStatusAr;
+    diagStatusAr.header.stamp = ros::Time::now();
+    diagStatus.level = diagStatus.ERROR;
+    diagStatusAr.status.push_back(diagStatus);
+    diag_pub.publish(diagStatusAr);
+ 
+
 
     ROS_INFO("Thread ended");
 }
@@ -538,6 +559,10 @@ int main( int argc, char **argv )
    nh.param("com_mode", com_mode, std::string(""));
    nh.param("rate", rate, 1.0); // With custom script, up to 30Hz are possible
    nh.param("grasping_force", grasping_force, 0.0);
+
+   
+   diagStatus.name = "wsg_50_driver";
+
 
    if (protocol == "udp")
        use_udp = true;
@@ -588,6 +613,7 @@ int main( int argc, char **argv )
             sub_speed = nh.subscribe("goal_speed", 5, speed_cb);
 
 		// Publisher
+		diag_pub = nh.advertise<diagnostic_msgs::DiagnosticArray>("/diagnostics", 5);
 		g_pub_state = nh.advertise<wsg_50_common::Status>("status", 1000);
 		g_pub_joint = nh.advertise<sensor_msgs::JointState>(js_prefix + "/joint_states", 10);
         if (g_mode_script || g_mode_periodic)
